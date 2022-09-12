@@ -258,8 +258,6 @@ public class MailResource {
 
         // blackList
         JsonObject blackList = new JsonObject();
-        JsonArray allBlackList = new JsonArray();
-
         // return
         JsonObject jret = new JsonObject();
 
@@ -299,22 +297,18 @@ public class MailResource {
                         .await()
                         .indefinitely();
 
-                allBlackList.add(blackList);
-                logger.infov("blackList={0}", blackList);
+
+
+                for (int  jk = 0; jk< to.size(); jk++){
+                    if(blackList.getString("blackList").equalsIgnoreCase(to.getString(jk))){
+                        to.remove(jk);
+                    }
+                }
+
             }
 
         } catch (Exception e){
             logger.infov("", e);
-        }
-
-
-        // to gees Blacklisted baigaa mail remove hiij baina.
-        for (int rm = 0; rm < to.size(); rm++){
-            for (int i = 0; i < allBlackList.size(); i++){
-                if(to.getString(rm).equalsIgnoreCase(allBlackList.getJsonObject(i).getString("blackList"))){
-                    to.remove(rm);
-                }
-            }
         }
 
 
