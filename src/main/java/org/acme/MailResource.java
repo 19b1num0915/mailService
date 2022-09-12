@@ -251,140 +251,164 @@ public class MailResource {
 
         JsonArray to = body.getJsonArray("to");
         String type = body.getJsonObject("body").getString("type");
+
+        // template
         JsonObject htmlJson = new JsonObject();
         String html="";
 
-        // template baival tuhain template name db select hiine
-        if ("template".equalsIgnoreCase(type)){
-            String templateName = body.getJsonObject("body").getString("templateName");
-            dbclient.query("select HTML from Templates where names ='" + templateName + "'")
-                    .execute()
-                    .onItem()
-                    .transformToUni(rowSet -> Uni.createFrom().item(rowSet.iterator().next()))
-                    .onItem()
-                    .transform(row -> htmlJson.put("html", row.getString(0)))
-                    .await()
-                    .indefinitely();
-            html = htmlJson.getString("html");
-        }
+        // blackList
+        JsonObject blackList = new JsonObject();
+        JsonArray allBlackList = new JsonArray();
 
+        // return
         JsonObject jret = new JsonObject();
+
         JsonArray a = new JsonArray();
 
-        for (int i=0; i< to.size(); i++){
-            String to1="";
-            String from1="";
-            String msg = "none";
-            try {
-                Mail mail = new Mail();
-                from1 = body.getString("from");
-
-                to1 = to.getString(i);
-                JsonObject blackList = new JsonObject();
-
-                mail.setFrom(body.getString("from"));
-
-                try {
-                    // mail blacklist check?
-                    dbclient.query("select email from black_list where email = '"+to1+"' ")
-                            .execute()
-                            .onItem()
-                            .transformToUni(rowSet -> Uni.createFrom().item(rowSet.iterator().next()))
-                            .onItem()
-                            .transform(row -> blackList.put("blackList", row.getString(0)))
-                            .await()
-                            .indefinitely();
-
-                } catch (Exception e){
-                    logger.error("blacklistError={0}", e);
-                }
-
-
-                // hooson baival
-                if(blackList.size() == 0) {
-
-                    // check email
-                    if (isValidEmail(to.getString(i))) {
-                        mail.addTo(to.getString(i));
-                    }
-                }
-                else {
-                    logger.infov("black_List={0}", to1);
-
-                }
-
-
-
-                // cc ?
-                if (body.containsKey("cc")) {
-                    JsonArray cc = body.getJsonArray("cc");
-                    for (int j = 0; j < cc.size(); j++) {
-                        if (isValidEmail(cc.getString(j))) {
-                            mail.addCc(cc.getString(j));
-                        }
-                    }
-                }
-                // bcc ?
-                if (body.containsKey("bcc")) {
-                    JsonArray bcc = body.getJsonArray("bcc");
-                    for (int k = 0; k < bcc.size(); k++) {
-                        if (isValidEmail(bcc.getString(k))) {
-                            mail.addBcc(bcc.getString(k));
-                        }
-                    }
-                }
-
-                String subject = body.getString("subject");
-                if (subject.length() > 255) {
-                    throw new RuntimeException("Subject must be shorter than 255");
-                }
-
-                JsonArray attachments = body.getJsonArray("attachments");
-                for (int q = 0; q < attachments.size(); q++) {
-                    String fileName_ = attachments.getJsonObject(q).getString("name");
-                    String fileType_ = attachments.getJsonObject(q).getString("type");
-                    byte[] fileData_ = Base64.getDecoder().decode(attachments.getJsonObject(q).getString("data"));
-                    if (fileData_ != null && fileName_ != null && fileType_ != null) {
-                        // add attachments
-                        mail.addAttachment(fileName_, fileData_, fileType_);
-                    }
-                }
-
-                if ("text".equalsIgnoreCase(type)) {
-                    mail.setText(body.getJsonObject("body").getString("content"));
-                } else if ("html".equalsIgnoreCase(type)) {
-                    mail.setHtml(body.getJsonObject("body").getString("content"));
-                } else if ("template".equalsIgnoreCase(type)) {
-                    if (!html.isEmpty()) {
-                        // template html replace
-                        JsonObject o = body.getJsonObject("body").getJsonObject("data");
-                        for (String key : o.fieldNames()) {
-                            html = html.replaceAll("\\{\\!" + key + "\\$\\}", o.getString(key));
-                        }
-                    }
-                    mail.setHtml(html);
-                }
-                mailer.send(mail);
-                msg = "success";
-            } catch (Exception e){
-
-                logger.error("", e);
-                msg = "failed";
+        try {
+            // template baival tuhain template name db select hiine
+            if ("template".equalsIgnoreCase(type)) {
+                String templateName = body.getJsonObject("body").getString("templateName");
+                dbclient.query("select HTML from Templates where names ='" + templateName + "'")
+                        .execute()
+                        .onItem()
+                        .transformToUni(rowSet -> Uni.createFrom().item(rowSet.iterator().next()))
+                        .onItem()
+                        .transform(row -> htmlJson.put("html", row.getString(0)))
+                        .await()
+                        .indefinitely();
+                html = htmlJson.getString("html");
             }
-            a.add(new JsonObject().put("email", to1).put("msg", msg));
-
-            final String email_from = from1;
-            final String email_to = to1;
-            final String msg_db = msg;
-            CompletableFuture.runAsync(
-                    () -> {
-                        // log db save
-                        dbclient.query("insert into logg(from1, to1, date1, msg) values('" + email_from + "' ,'" + email_to + "','" + LocalDate.now() + "', '"+msg_db+"')")
-                                .execute()
-                                .await()
-                                .indefinitely();
-                    });
+        } catch (Exception e){
+            logger.error("", e);
+            throw new RuntimeException("Database deer "
+                                        +body.getJsonObject("body").getString("templateName")+
+                                        "gesen template alga baina");
         }
+
+        try {
+            // JsonArray luu black to dotor baigaa
+            // emailuudig jsonObject bolgoj put hiij baigaa
+            for (int bl = 0; bl < to.size(); bl++) {
+                dbclient.query("select email from black_list where email = '" + to.getString(bl) + "' ")
+                        .execute()
+                        .onItem()
+                        .transformToUni(rowSet -> Uni.createFrom().item(rowSet.iterator().next()))
+                        .onItem()
+                        .transform(row -> blackList.put("blackList", row.getString(0)))
+                        .await()
+                        .indefinitely();
+
+                allBlackList.add(blackList);
+                logger.infov("blackList={0}", blackList);
+            }
+
+        } catch (Exception e){
+            logger.infov("", e);
+        }
+
+
+        // to gees Blacklisted baigaa mail remove hiij baina.
+        for (int rm = 0; rm < to.size(); rm++){
+            for (int i = 0; i < allBlackList.size(); i++){
+                if(to.getString(rm).equalsIgnoreCase(allBlackList.getJsonObject(i).getString("blackList"))){
+                    to.remove(rm);
+                }
+            }
+        }
+
+
+
+
+        // mail send
+        if (to.size() > 0) {
+          for (int i = 0; i < to.size(); i++) {
+              String to1 = "";
+              String from1 = "";
+              String msg = "none";
+              try {
+                  Mail mail = new Mail();
+                  from1 = body.getString("from");
+
+                  to1 = to.getString(i);
+                  mail.setFrom(body.getString("from"));
+
+                  // check email
+                  if (isValidEmail(to.getString(i))) {
+                      mail.addTo(to.getString(i));
+                  }
+
+                  // cc ?
+                  if (body.containsKey("cc")) {
+                      JsonArray cc = body.getJsonArray("cc");
+                      for (int j = 0; j < cc.size(); j++) {
+                          if (isValidEmail(cc.getString(j))) {
+                              mail.addCc(cc.getString(j));
+                          }
+                      }
+                  }
+                  // bcc ?
+                  if (body.containsKey("bcc")) {
+                      JsonArray bcc = body.getJsonArray("bcc");
+                      for (int k = 0; k < bcc.size(); k++) {
+                          if (isValidEmail(bcc.getString(k))) {
+                              mail.addBcc(bcc.getString(k));
+                          }
+                      }
+                  }
+
+                  String subject = body.getString("subject");
+                  if (subject.length() > 255) {
+                      throw new RuntimeException("Subject must be shorter than 255");
+                  }
+
+                  JsonArray attachments = body.getJsonArray("attachments");
+                  for (int q = 0; q < attachments.size(); q++) {
+                      String fileName_ = attachments.getJsonObject(q).getString("name");
+                      String fileType_ = attachments.getJsonObject(q).getString("type");
+                      byte[] fileData_ = Base64.getDecoder().decode(attachments.getJsonObject(q).getString("data"));
+                      if (fileData_ != null && fileName_ != null && fileType_ != null) {
+                          // add attachments
+                          mail.addAttachment(fileName_, fileData_, fileType_);
+                      }
+                  }
+
+                  if ("text".equalsIgnoreCase(type)) {
+                      mail.setText(body.getJsonObject("body").getString("content"));
+                  } else if ("html".equalsIgnoreCase(type)) {
+                      mail.setHtml(body.getJsonObject("body").getString("content"));
+                  } else if ("template".equalsIgnoreCase(type)) {
+                      if (!html.isEmpty()) {
+                          // template html replace
+                          JsonObject o = body.getJsonObject("body").getJsonObject("data");
+                          for (String key : o.fieldNames()) {
+                              html = html.replaceAll("\\{\\!" + key + "\\$\\}", o.getString(key));
+                          }
+                      }
+                      mail.setHtml(html);
+                  }
+                  mailer.send(mail);
+                  msg = "success";
+              } catch (Exception e) {
+
+                  logger.error("", e);
+                  msg = "failed";
+              }
+              a.add(new JsonObject().put("email", to1).put("msg", msg));
+
+              final String email_from = from1;
+              final String email_to = to1;
+              final String msg_db = msg;
+              CompletableFuture.runAsync(
+                      () -> {
+                          // log db save
+                          dbclient.query("insert into logg(from1, to1, date1, msg) values('" + email_from + "' ,'" + email_to + "','" + LocalDate.now() + "', '" + msg_db + "')")
+                                  .execute()
+                                  .await()
+                                  .indefinitely();
+                      });
+          }
+      }
         jret.put("result", a);
         return jret;
     }
