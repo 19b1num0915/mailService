@@ -1,6 +1,7 @@
 package org.acme;
 
 
+import Data.BlackList;
 import Data.Html;
 import io.quarkus.mailer.Mail;
 import io.quarkus.mailer.Mailer;
@@ -10,6 +11,7 @@ import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.mutiny.pgclient.PgPool;
+import io.vertx.mutiny.sqlclient.Row;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.RestResponse;
 
@@ -21,6 +23,8 @@ import javax.ws.rs.core.Response;
 import java.nio.file.NoSuchFileException;
 import java.time.LocalDate;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import static Utils.Globals.isValidEmail;
 
@@ -115,6 +119,12 @@ public class MailResource {
         }
         return new JsonObject().put("msg", msg);
     }
+
+
+
+
+
+
 
     @POST
     @Path("/send/multi")
@@ -256,13 +266,14 @@ public class MailResource {
         JsonObject htmlJson = new JsonObject();
         String html="";
 
-        // blackList
-        JsonObject blackList = new JsonObject();
+
         // return
         JsonObject jret = new JsonObject();
-
+        // return content
         JsonArray a = new JsonArray();
 
+
+        // select template
         try {
             // template baival tuhain template name db select hiine
             if ("template".equalsIgnoreCase(type)) {
@@ -276,36 +287,27 @@ public class MailResource {
                         .await()
                         .indefinitely();
                 html = htmlJson.getString("html");
+
+
+                if (html.isEmpty()){
+                    throw new RuntimeException("this template will not found in database!!");
+                }
             }
         } catch (Exception e){
-            logger.error("", e);
-            throw new RuntimeException("Database deer "
-                                        +body.getJsonObject("body").getString("templateName")+
-                                        "gesen template alga baina");
+            logger.error("template", e);
+
         }
 
+
+        // blackList check
         try {
-            // JsonArray luu black to dotor baigaa
-            // emailuudig jsonObject bolgoj put hiij baigaa
-            for (int bl = 0; bl < to.size(); bl++) {
-                dbclient.query("select email from black_list where email = '" + to.getString(bl) + "' ")
-                        .execute()
-                        .onItem()
-                        .transformToUni(rowSet -> Uni.createFrom().item(rowSet.iterator().next()))
-                        .onItem()
-                        .transform(row -> blackList.put("blackList", row.getString(0)))
-                        .await()
-                        .indefinitely();
+
+            HashMap<Integer, String> blackList = new HashMap<>();
 
 
 
-                for (int  jk = 0; jk< to.size(); jk++){
-                    if(blackList.getString("blackList").equalsIgnoreCase(to.getString(jk))){
-                        to.remove(jk);
-                    }
-                }
 
-            }
+
 
         } catch (Exception e){
             logger.infov("", e);
@@ -430,6 +432,14 @@ public class MailResource {
     }
 
 
+    @GET
+    @Path("blackList/getBlackList")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Blocking
+    public List<Row> getBlackAll(){
+        return BlackList.findAll(dbclient);
+    }
 
 
 }
