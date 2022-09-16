@@ -22,9 +22,7 @@ import javax.ws.rs.core.Response;
 
 import java.nio.file.NoSuchFileException;
 import java.time.LocalDate;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import static Utils.Globals.isValidEmail;
 
@@ -301,13 +299,26 @@ public class MailResource {
 
         // blackList check
         try {
+            // database selecting
+           List<Map.Entry<Integer, String>> blackList = dbclient.query("select * from black_list")
+                   .execute()
+                   .onItem()
+                   .transformToMulti(set -> Multi.createFrom().iterable(set))
+                   .onItem()
+                   .transform(BlackList::from)
+                   .collect()
+                   .asList()
+                   .await()
+                   .indefinitely();
 
-            HashMap<Integer, String> blackList = new HashMap<>();
-
-
-
-
-
+           // searching
+           for (int o =0; o< to.size(); o++){
+                for (int k = 0; k< blackList.size(); k++){
+                    if (to.getString(o).equalsIgnoreCase(blackList.get(k).getValue())){
+                        to.remove(o);
+                    }
+                }
+           }
 
         } catch (Exception e){
             logger.infov("", e);
@@ -391,7 +402,6 @@ public class MailResource {
                   msg = "failed";
               }
               a.add(new JsonObject().put("email", to1).put("msg", msg));
-
               final String email_from = from1;
               final String email_to = to1;
               final String msg_db = msg;
@@ -437,7 +447,7 @@ public class MailResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @Blocking
-    public List<Row> getBlackAll(){
+    public List<Map.Entry<Integer, String>> getBlackAll(){
         return BlackList.findAll(dbclient);
     }
 
